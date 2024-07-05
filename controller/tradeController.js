@@ -6,7 +6,17 @@ const axios = require("axios");
 const cron = require("node-cron");
 
 exports.startTrade = async (req, res) => {
-  const { amount, entryPrice, leverage, tradeType } = req.body;
+  const { amount, leverage, tradeType } = req.body;
+  const response = await axios.get(
+    "https://api.coingecko.com/api/v3/simple/price",
+    {
+      params: {
+        ids: "ethereum",
+        vs_currencies: "usd",
+      },
+    }
+  );
+  entryPrice = response.data.ethereum.usd;
   const startDate = Math.floor(Date.now() / 1000);
   const newTrade = new Trade({
     userId: 1,
@@ -41,7 +51,21 @@ exports.getTradeHistory = async (req, res) => {
 };
 
 exports.quitTrade = async (req, res) => {
-  const { endPrice, tradeId } = req.body;
+  const { tradeId } = req.body;
+  const response = await axios.get(
+    "https://api.coingecko.com/api/v3/simple/price",
+    {
+      params: {
+        ids: "ethereum",
+        vs_currencies: "usd",
+      },
+    }
+  );
+  endPrice = response.data.ethereum.usd;
+  const searchTrade = Trade.findOne({ _id: tradeId });
+  if (searchTrade.isExpire === false) {
+    res.send({ message: "fail" });
+  }
   let updatedTrade = await this.closeTrade(endPrice, tradeId, false);
   let pool = await Pool.findOne();
   const data = {
@@ -65,33 +89,36 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   }
   if (trade.type === "long") {
     trade.profit =
-      (trade.endPrice - trade.entryPrice) * trade.amount * trade.leverage -
-      trade.endPrice * trade.amount * trade.leverage * 0.4;
+      (trade.endPrice - trade.entryPrice) * trade.amount * trade.leverage;
     if (trade.profit > 0) {
-      trade.profit *= 0.9;
       poolProfit = trade.profit * 0.1;
+      trade.profit *= 0.9;
     } else {
-      trade.profit *= 0.95;
       poolProfit = trade.profit * 0.05;
+      trade.profit *= 0.95;
     }
   }
   if (trade.type === "short") {
     trade.profit =
-      (trade.entryPrice - trade.endPrice) * trade.amount * trade.leverage -
-      trade.endPrice * trade.amount * trade.leverage * 0.4;
+      (trade.entryPrice - trade.endPrice) * trade.amount * trade.leverage;
     if (trade.profit > 0) {
-      trade.profit *= 0.9;
       poolProfit = trade.profit * 0.1;
+      trade.profit *= 0.9;
     } else {
-      trade.profit *= 0.95;
       poolProfit = trade.profit * 0.05;
+      trade.profit *= 0.95;
     }
   }
 
+  trade.executionFee = trade.endPrice * trade.amount * trade.leverage * 0.004;
+
   let pool = await Pool.findOne();
-  newBalance = pool.balance + poolProfit;
+  console.log("refund", trade.entryPrice * trade.amount * (trade.leverage - 1));
   pool.balance =
-    newBalance + trade.entryPrice * trade.amount * (trade.leverage - 1);
+    pool.balance +
+    poolProfit +
+    trade.executionFee +
+    trade.entryPrice * trade.amount * (trade.leverage - 1);
   await pool.save();
 
   updatedTrade = await trade.save();
@@ -117,13 +144,17 @@ exports.startCron = () => {
       console.error("Error fetching ETH price:", error);
       throw error;
     }
+    // const limitDate = Date.now() - 120000;
     const limitDate = Date.now() - 604800000;
     const trades = await Trade.find({
       startDate: { $lte: limitDate },
       endDate: { $exists: false },
     });
-    trades.map((trade) => {
-      this.closeTrade(ethPrice, trade._id, true);
-    });
+    const closeTrades = async (ethPrice, trades) => {
+      for (const trade of trades) {
+        await this.closeTrade(ethPrice, trade._id, true);
+      }
+    };
+    closeTrades(ethPrice, trades);
   });
 };
