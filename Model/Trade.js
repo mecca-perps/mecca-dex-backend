@@ -29,6 +29,9 @@ const TradeSchema = new mongoose.Schema({
   profit: {
     type: Number,
   },
+  isExpire: {
+    type: Boolean
+  }
 });
 
 const Trade = mongoose.model("Trade", TradeSchema);
