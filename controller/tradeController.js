@@ -1,12 +1,11 @@
 const Trade = require("../Model/Trade");
 const Pool = require("../Model/Pool");
-const User = require("../Model/User");
 const { ObjectId } = require("mongodb");
 const axios = require("axios");
 const cron = require("node-cron");
 
 exports.startTrade = async (req, res) => {
-  const { amount, leverage, tradeType } = req.body;
+  const { amount, leverage, tradeType, collateral, walletAddress } = req.body;
   const response = await axios.get(
     "https://api.coingecko.com/api/v3/simple/price",
     {
@@ -19,7 +18,7 @@ exports.startTrade = async (req, res) => {
   entryPrice = response.data.ethereum.usd;
   const startDate = Math.floor(Date.now() / 1000);
   const newTrade = new Trade({
-    userId: 1,
+    userId: walletAddress,
     startDate,
     entryPrice,
     amount,
@@ -28,8 +27,7 @@ exports.startTrade = async (req, res) => {
   });
 
   let pool = await Pool.findOne();
-  newBalance = pool.balance - entryPrice * amount * (leverage - 1);
-  pool.balance = newBalance;
+  pool.balance = pool.balance - entryPrice * amount * (leverage - 1);
   await pool.save();
 
   await newTrade.save();
@@ -41,7 +39,8 @@ exports.startTrade = async (req, res) => {
 };
 
 exports.getTradeHistory = async (req, res) => {
-  let trades = await Trade.find();
+  let walletAddress = req.params.walletAddress;
+  let trades = await Trade.find({ userId: walletAddress });
   let pool = await Pool.findOne();
   const data = {
     trades: trades,
@@ -51,7 +50,7 @@ exports.getTradeHistory = async (req, res) => {
 };
 
 exports.quitTrade = async (req, res) => {
-  const { tradeId } = req.body;
+  const { tradeId, walletAddress } = req.body;
   const response = await axios.get(
     "https://api.coingecko.com/api/v3/simple/price",
     {
@@ -113,7 +112,6 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   trade.executionFee = trade.endPrice * trade.amount * trade.leverage * 0.004;
 
   let pool = await Pool.findOne();
-  console.log("refund", trade.entryPrice * trade.amount * (trade.leverage - 1));
   pool.balance =
     pool.balance +
     poolProfit +
@@ -144,7 +142,6 @@ exports.startCron = () => {
       console.error("Error fetching ETH price:", error);
       throw error;
     }
-    // const limitDate = Date.now() - 120000;
     const limitDate = Date.now() - 604800000;
     const trades = await Trade.find({
       startDate: { $lte: limitDate },
