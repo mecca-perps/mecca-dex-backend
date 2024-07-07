@@ -142,16 +142,27 @@ exports.startCron = () => {
       console.error("Error fetching ETH price:", error);
       throw error;
     }
+
     const limitDate = Date.now() - 604800000;
     const trades = await Trade.find({
       startDate: { $lte: limitDate },
       endDate: { $exists: false },
+    });
+    const liquidates = await Trade.find({
+      entryPrice: { $gte: 2 * ethPrice },
     });
     const closeTrades = async (ethPrice, trades) => {
       for (const trade of trades) {
         await this.closeTrade(ethPrice, trade._id, true);
       }
     };
-    closeTrades(ethPrice, trades);
+    const liquidateTrades = async (ethPrice, liquidates) => {
+      for (const trade of liquidates) {
+        await this.closeTrade(ethPrice, trade._id, true);
+      }
+    };
+
+    await closeTrades(ethPrice, trades);
+    liquidateTrades(ethPrice, liquidates);
   });
 };
