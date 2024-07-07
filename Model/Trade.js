@@ -30,8 +30,11 @@ const TradeSchema = new mongoose.Schema({
     type: Number,
   },
   isExpire: {
-    type: Boolean
-  }
+    type: Boolean,
+  },
+  executionFee: {
+    type: Number,
+  },
 });
 
 const Trade = mongoose.model("Trade", TradeSchema);

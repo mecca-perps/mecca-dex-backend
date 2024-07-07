@@ -23,7 +23,7 @@ const MongoURI = process.env.MONGOURI;
 
 app.post("/startTrade", startTrade);
 app.post("/quitTrade", quitTrade);
-app.get("/getTradeHistory", getTradeHistory);
+app.get("/getTradeHistory/:walletAddress", getTradeHistory);
 
 async function startApp() {
   await mongoose
