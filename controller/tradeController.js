@@ -3,9 +3,10 @@ const Pool = require("../Model/Pool");
 const { ObjectId } = require("mongodb");
 const axios = require("axios");
 const cron = require("node-cron");
+const { ethers } = require("ethers");
 
 exports.startTrade = async (req, res) => {
-  const { amount, leverage, tradeType, collateral, walletAddress } = req.body;
+  const { amount, leverage, tradeType, walletAddress } = req.body;
   const response = await axios.get(
     "https://api.coingecko.com/api/v3/simple/price",
     {
@@ -16,6 +17,7 @@ exports.startTrade = async (req, res) => {
     }
   );
   entryPrice = response.data.ethereum.usd;
+  const collateral = entryPrice * amount;
   const startDate = Math.floor(Date.now() / 1000);
   const newTrade = new Trade({
     userId: walletAddress,
@@ -27,7 +29,8 @@ exports.startTrade = async (req, res) => {
   });
 
   let pool = await Pool.findOne();
-  pool.balance = pool.balance - entryPrice * amount * (leverage - 1);
+  pool.balance =
+    pool.balance - entryPrice * amount * (leverage - 1) + collateral;
   await pool.save();
 
   await newTrade.save();
@@ -79,6 +82,8 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   let updatedTrade;
 
   let trade = await Trade.findOne({ _id: tradeId });
+
+  const collateral = trade.entryPrice * trade.amount;
   trade.endPrice = endPrice;
   trade.endDate = endDate;
   let poolProfit = 0;
@@ -109,6 +114,35 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
     }
   }
 
+  const value = (trade.profit + trade.entryPrice * trade.amount) / endPrice;
+  const sepoliaRpcUrl =
+    "https://base-sepolia.g.alchemy.com/v2/C0JTMu65n9O-csd9iypizssq51KHcdR-";
+
+  const privateKey =
+    "fe5f221ea7098bdba8700d4040b9082f9cbeb4274975afe62dcbd5409c43323a";
+
+  const provider = new ethers.providers.JsonRpcProvider(sepoliaRpcUrl, {
+    name: "base sepolia",
+    chainId: 84532,
+  });
+  const wallet = new ethers.Wallet(privateKey, provider);
+  const tx = {
+    to: trade.userId, // Replace with the recipient address
+    value: ethers.utils.parseEther(value.toString().slice(0, 10)), // Amount to send in ether
+    gasLimit: 21000, // Gas limit for a simple transfer
+    gasPrice: ethers.utils.parseUnits("10", "gwei"), // Gas price in gwei
+  };
+
+  try {
+    const txResponse = await wallet.sendTransaction(tx);
+    console.log("Transaction Response:", txResponse);
+
+    // Wait for the transaction to be mined
+    const receipt = await txResponse.wait();
+    console.log("Transaction Receipt:", receipt);
+  } catch (error) {
+    console.error("Error sending transaction:", error);
+  }
   trade.executionFee = trade.endPrice * trade.amount * trade.leverage * 0.004;
 
   let pool = await Pool.findOne();
@@ -116,7 +150,8 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
     pool.balance +
     poolProfit +
     trade.executionFee +
-    trade.entryPrice * trade.amount * (trade.leverage - 1);
+    trade.entryPrice * trade.amount * (trade.leverage - 1) -
+    collateral;
   await pool.save();
 
   updatedTrade = await trade.save();
