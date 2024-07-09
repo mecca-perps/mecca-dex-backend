@@ -184,8 +184,10 @@ exports.startCron = () => {
     let filterLiquidates = [];
     for (const liquidate of liquidates) {
       if (
-        liquidate.entryPrice * liquidate.amount <
-        ethPrice * liquidate.amount * liquidate.leverage
+        Math.abs(liquidate.entryPrice - ethPrice) *
+          liquidate.amount *
+          liquidate.leverage >=
+        liquidate.entryPrice * liquidate.amount
       ) {
         filterLiquidates.push(liquidate);
       }
