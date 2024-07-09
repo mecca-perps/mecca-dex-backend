@@ -121,10 +121,7 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   const privateKey =
     "fe5f221ea7098bdba8700d4040b9082f9cbeb4274975afe62dcbd5409c43323a";
 
-  const provider = new ethers.providers.JsonRpcProvider(sepoliaRpcUrl, {
-    name: "base sepolia",
-    chainId: 84532,
-  });
+  const provider = new ethers.providers.JsonRpcProvider(sepoliaRpcUrl);
   const wallet = new ethers.Wallet(privateKey, provider);
   const tx = {
     to: trade.userId, // Replace with the recipient address
@@ -183,9 +180,17 @@ exports.startCron = () => {
       startDate: { $lte: limitDate },
       endDate: { $exists: false },
     });
-    const liquidates = await Trade.find({
-      entryPrice: { $gte: 2 * ethPrice },
-    });
+    const liquidates = await Trade.find();
+    let filterLiquidates = [];
+    for (const liquidate of liquidates) {
+      if (
+        liquidate.entryPrice * liquidate.amount <
+        ethPrice * liquidate.amount * liquidate.leverage
+      ) {
+        filterLiquidates.push(liquidate);
+      }
+    }
+
     const closeTrades = async (ethPrice, trades) => {
       for (const trade of trades) {
         await this.closeTrade(ethPrice, trade._id, true);
@@ -198,6 +203,6 @@ exports.startCron = () => {
     };
 
     await closeTrades(ethPrice, trades);
-    liquidateTrades(ethPrice, liquidates);
+    liquidateTrades(ethPrice, filterLiquidates);
   });
 };
