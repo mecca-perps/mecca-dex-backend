@@ -29,8 +29,7 @@ exports.startTrade = async (req, res) => {
   });
 
   let pool = await Pool.findOne();
-  pool.balance =
-    pool.balance - entryPrice * amount * (leverage - 1) + collateral;
+  pool.balance = pool.balance - entryPrice * amount * (leverage - 1);
   await pool.save();
 
   await newTrade.save();
@@ -88,12 +87,15 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   trade.endDate = endDate;
   let poolProfit = 0;
 
+  trade.executionFee = trade.endPrice * trade.amount * trade.leverage * 0.004;
+
   if (isExpire) {
     trade.isExpire = true;
   }
   if (trade.type === "long") {
     trade.profit =
-      (trade.endPrice - trade.entryPrice) * trade.amount * trade.leverage;
+      (trade.endPrice - trade.entryPrice) * trade.amount * trade.leverage -
+      trade.executionFee;
     if (trade.profit > 0) {
       poolProfit = trade.profit * 0.1;
       trade.profit *= 0.9;
@@ -104,7 +106,8 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   }
   if (trade.type === "short") {
     trade.profit =
-      (trade.entryPrice - trade.endPrice) * trade.amount * trade.leverage;
+      (trade.entryPrice - trade.endPrice) * trade.amount * trade.leverage -
+      trade.executionFee;
     if (trade.profit > 0) {
       poolProfit = trade.profit * 0.1;
       trade.profit *= 0.9;
@@ -114,41 +117,42 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
     }
   }
 
-  const value = (trade.profit + trade.entryPrice * trade.amount) / endPrice;
-  const sepoliaRpcUrl =
-    "https://base-sepolia.g.alchemy.com/v2/C0JTMu65n9O-csd9iypizssq51KHcdR-";
+  const value =
+    (trade.profit + trade.entryPrice * trade.amount - trade.executionFee) /
+    endPrice;
+  console.log(value);
+  // const sepoliaRpcUrl =
+  //   "https://base-sepolia.g.alchemy.com/v2/C0JTMu65n9O-csd9iypizssq51KHcdR-";
 
-  const privateKey =
-    "fe5f221ea7098bdba8700d4040b9082f9cbeb4274975afe62dcbd5409c43323a";
+  // const privateKey =
+  //   "fe5f221ea7098bdba8700d4040b9082f9cbeb4274975afe62dcbd5409c43323a";
 
-  const provider = new ethers.providers.JsonRpcProvider(sepoliaRpcUrl);
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const tx = {
-    to: trade.userId, // Replace with the recipient address
-    value: ethers.utils.parseEther(value.toString().slice(0, 10)), // Amount to send in ether
-    gasLimit: 21000, // Gas limit for a simple transfer
-    gasPrice: ethers.utils.parseUnits("10", "gwei"), // Gas price in gwei
-  };
+  // const provider = new ethers.providers.JsonRpcProvider(sepoliaRpcUrl);
+  // const wallet = new ethers.Wallet(privateKey, provider);
+  // const tx = {
+  //   to: trade.userId, // Replace with the recipient address
+  //   value: ethers.utils.parseEther(value.toString().slice(0, 10)), // Amount to send in ether
+  //   gasLimit: 21000, // Gas limit for a simple transfer
+  //   gasPrice: ethers.utils.parseUnits("10", "gwei"), // Gas price in gwei
+  // };
 
-  try {
-    const txResponse = await wallet.sendTransaction(tx);
-    console.log("Transaction Response:", txResponse);
+  // try {
+  //   const txResponse = await wallet.sendTransaction(tx);
+  //   console.log("Transaction Response:", txResponse);
 
-    // Wait for the transaction to be mined
-    const receipt = await txResponse.wait();
-    console.log("Transaction Receipt:", receipt);
-  } catch (error) {
-    console.error("Error sending transaction:", error);
-  }
-  trade.executionFee = trade.endPrice * trade.amount * trade.leverage * 0.004;
+  //   // Wait for the transaction to be mined
+  //   const receipt = await txResponse.wait();
+  //   console.log("Transaction Receipt:", receipt);
+  // } catch (error) {
+  //   console.error("Error sending transaction:", error);
+  // }
 
   let pool = await Pool.findOne();
   pool.balance =
     pool.balance +
     poolProfit +
     trade.executionFee +
-    trade.entryPrice * trade.amount * (trade.leverage - 1) -
-    collateral;
+    trade.entryPrice * trade.amount * (trade.leverage - 1);
   await pool.save();
 
   updatedTrade = await trade.save();
@@ -180,18 +184,37 @@ exports.startCron = () => {
       startDate: { $lte: limitDate },
       endDate: { $exists: false },
     });
-    const liquidates = await Trade.find();
-    let filterLiquidates = [];
-    for (const liquidate of liquidates) {
-      if (
-        Math.abs(liquidate.entryPrice - ethPrice) *
-          liquidate.amount *
-          liquidate.leverage >=
-        liquidate.entryPrice * liquidate.amount
-      ) {
-        filterLiquidates.push(liquidate);
+    const liquidates = await Trade.find({
+      endDate: { $exists: false },
+    });
+
+    const getFiltered = async (liquidates) => {
+      let result = [];
+      for (const liquidate of liquidates) {
+        if (liquidate.type === "long") {
+          if (
+            (liquidate.entryPrice - ethPrice) *
+              liquidate.amount *
+              liquidate.leverage >=
+            liquidate.entryPrice * liquidate.amount
+          ) {
+            result.push(liquidate);
+          }
+        } else {
+          if (
+            (ethPrice - liquidate.entryPrice) *
+              liquidate.amount *
+              liquidate.leverage >=
+            liquidate.entryPrice * liquidate.amount
+          ) {
+            result.push(liquidate);
+          }
+        }
       }
-    }
+      return result;
+    };
+
+    const filterLiquidates = await getFiltered(liquidates);
 
     const closeTrades = async (ethPrice, trades) => {
       for (const trade of trades) {
