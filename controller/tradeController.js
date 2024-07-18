@@ -1,5 +1,6 @@
 const Trade = require("../Model/Trade");
 const Pool = require("../Model/Pool");
+const User = require("../Model/User");
 const { ObjectId } = require("mongodb");
 const axios = require("axios");
 const cron = require("node-cron");
@@ -28,6 +29,10 @@ exports.startTrade = async (req, res) => {
     type: tradeType,
   });
 
+  const user = await User.findOne({ walletAddress: walletAddress });
+  user.balance = user.balance - entryPrice * amount;
+  await user.save();
+
   let pool = await Pool.findOne();
   pool.balance = pool.balance - entryPrice * amount * (leverage - 1);
   await pool.save();
@@ -36,6 +41,7 @@ exports.startTrade = async (req, res) => {
   const data = {
     trade: newTrade,
     balance: pool.balance,
+    userBalance: user.balance,
   };
   res.send({ message: "success", data: data });
 };
@@ -44,11 +50,28 @@ exports.getTradeHistory = async (req, res) => {
   let walletAddress = req.params.walletAddress;
   let trades = await Trade.find({ userId: walletAddress });
   let pool = await Pool.findOne();
+  let user = await User.findOne({ walletAddress: walletAddress });
   const data = {
     trades: trades,
     balance: pool.balance,
+    userBalance: user.balance,
   };
   res.send({ message: "success", data: data });
+};
+
+exports.createOrGetUser = async (req, res) => {
+  const { walletAddress } = req.body;
+  const user = await User.find({ walletAddress: walletAddress });
+  if (user.length > 0) {
+    res.send({ message: "success", data: user });
+  } else {
+    const newUser = new User({
+      walletAddress: walletAddress,
+      balance: 1000000,
+    });
+    newUser.save();
+    res.send({ message: "success", data: newUser });
+  }
 };
 
 exports.quitTrade = async (req, res) => {
@@ -69,9 +92,13 @@ exports.quitTrade = async (req, res) => {
   }
   let updatedTrade = await this.closeTrade(endPrice, tradeId, false);
   let pool = await Pool.findOne();
+  const user = await User.findOne({
+    walletAddress: updatedTrade.userId,
+  });
   const data = {
     trade: updatedTrade,
     balance: pool.balance,
+    userBalance: user.balance,
   };
   res.send({ message: "success", data: data });
 };
@@ -120,7 +147,6 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   const value =
     (trade.profit + trade.entryPrice * trade.amount - trade.executionFee) /
     endPrice;
-  console.log(value);
   // const sepoliaRpcUrl =
   //   "https://base-sepolia.g.alchemy.com/v2/C0JTMu65n9O-csd9iypizssq51KHcdR-";
 
@@ -146,6 +172,14 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   // } catch (error) {
   //   console.error("Error sending transaction:", error);
   // }
+
+  const user = await User.findOne({ walletAddress: trade.userId });
+  user.balance =
+    user.balance -
+    trade.executionFee +
+    trade.profit +
+    trade.entryPrice * trade.amount;
+  await user.save();
 
   let pool = await Pool.findOne();
   pool.balance =

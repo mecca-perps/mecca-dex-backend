@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 require("dotenv").config();
 const Pool = require("./Model/Pool");
+const User = require("./Model/User");
 
 const MongoURI = process.env.MONGOURI;
 
