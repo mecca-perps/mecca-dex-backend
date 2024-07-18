@@ -9,6 +9,7 @@ const {
   startTrade,
   quitTrade,
   getTradeHistory,
+  createOrGetUser,
   startCron,
 } = require("./controller/tradeController");
 
@@ -23,6 +24,7 @@ const MongoURI = process.env.MONGOURI;
 
 app.post("/startTrade", startTrade);
 app.post("/quitTrade", quitTrade);
+app.post("/createOrGetUser", createOrGetUser);
 app.get("/getTradeHistory/:walletAddress", getTradeHistory);
 
 async function startApp() {
