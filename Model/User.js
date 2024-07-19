@@ -4,6 +4,10 @@ const UserSchema = new mongoose.Schema({
   balance: {
     type: Number,
   },
+  profit: {
+    type: Number,
+    default: 0,
+  },
   walletAddress: {
     type: String,
   },
