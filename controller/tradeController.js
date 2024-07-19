@@ -59,17 +59,29 @@ exports.getTradeHistory = async (req, res) => {
   res.send({ message: "success", data: data });
 };
 
+exports.getTopTraders = async (req, res) => {
+  const traders = await User.find()
+    .sort({
+      profit: -1,
+    })
+    .limit(10);
+  const data = {
+    traders: traders,
+  };
+  res.send({ message: "success", data: data });
+};
+
 exports.createOrGetUser = async (req, res) => {
   const { walletAddress } = req.body;
-  const user = await User.find({ walletAddress: walletAddress });
-  if (user.length > 0) {
+  const user = await User.findOne({ walletAddress: walletAddress });
+  if (user) {
     res.send({ message: "success", data: user });
   } else {
     const newUser = new User({
       walletAddress: walletAddress,
       balance: 1000000,
     });
-    newUser.save();
+    await newUser.save();
     res.send({ message: "success", data: newUser });
   }
 };
@@ -179,6 +191,7 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
     trade.executionFee +
     trade.profit +
     trade.entryPrice * trade.amount;
+  user.profit = user.profit + trade.profit;
   await user.save();
 
   let pool = await Pool.findOne();

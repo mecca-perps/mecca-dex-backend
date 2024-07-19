@@ -10,6 +10,7 @@ const {
   quitTrade,
   getTradeHistory,
   createOrGetUser,
+  getTopTraders,
   startCron,
 } = require("./controller/tradeController");
 
@@ -26,6 +27,7 @@ app.post("/startTrade", startTrade);
 app.post("/quitTrade", quitTrade);
 app.post("/createOrGetUser", createOrGetUser);
 app.get("/getTradeHistory/:walletAddress", getTradeHistory);
+app.get("/getTopTraders", getTopTraders);
 
 async function startApp() {
   await mongoose
