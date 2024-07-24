@@ -29,6 +29,7 @@ app.post("/quitTrade", quitTrade);
 app.post("/createOrGetUser", createOrGetUser);
 app.get("/getTradeHistory/:walletAddress", getTradeHistory);
 app.get("/getTopTraders", getTopTraders);
+app.get("/index", (req, res) => {res.send("aaa");});
 
 async function startApp() {
   await mongoose
