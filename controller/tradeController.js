@@ -71,18 +71,41 @@ exports.getTopTraders = async (req, res) => {
   res.send({ message: "success", data: data });
 };
 
+exports.getTrades = async (req, res) => {
+  const trades = await Trade.find({
+    profit: {
+      $exists: true,
+    },
+  }).sort({
+    endDate: -1,
+  });
+  const data = {
+    trades: trades,
+  };
+  res.send({
+    message: "success",
+    data: data,
+  });
+};
+
 exports.createOrGetUser = async (req, res) => {
   const { walletAddress } = req.body;
   const user = await User.findOne({ walletAddress: walletAddress });
+
   if (user) {
-    res.send({ message: "success", data: user });
+    const pool = await Pool.findOne();
+    const poolBalance = pool.balance;
+    res.send({ message: "success", data: user, poolBalance: poolBalance });
   } else {
     const newUser = new User({
       walletAddress: walletAddress,
       balance: 1000000,
+      eth: 10,
     });
     await newUser.save();
-    res.send({ message: "success", data: newUser });
+    const pool = await Pool.findOne();
+    const poolBalance = pool.balance;
+    res.send({ message: "success", data: newUser, poolBalance: poolBalance });
   }
 };
 
@@ -133,8 +156,7 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   }
   if (trade.type === "long") {
     trade.profit =
-      (trade.endPrice - trade.entryPrice) * trade.amount * trade.leverage -
-      trade.executionFee;
+      (trade.endPrice - trade.entryPrice) * trade.amount * trade.leverage;
     if (trade.profit > 0) {
       poolProfit = trade.profit * 0.1;
       trade.profit *= 0.9;
@@ -145,8 +167,7 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   }
   if (trade.type === "short") {
     trade.profit =
-      (trade.entryPrice - trade.endPrice) * trade.amount * trade.leverage -
-      trade.executionFee;
+      (trade.entryPrice - trade.endPrice) * trade.amount * trade.leverage;
     if (trade.profit > 0) {
       poolProfit = trade.profit * 0.1;
       trade.profit *= 0.9;
@@ -155,6 +176,8 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
       trade.profit *= 0.95;
     }
   }
+
+  trade.profit -= trade.executionFee;
 
   const value =
     (trade.profit + trade.entryPrice * trade.amount - trade.executionFee) /
@@ -186,11 +209,7 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
   // }
 
   const user = await User.findOne({ walletAddress: trade.userId });
-  user.balance =
-    user.balance -
-    trade.executionFee +
-    trade.profit +
-    trade.entryPrice * trade.amount;
+  user.balance = user.balance + trade.profit + trade.entryPrice * trade.amount;
   user.profit = user.profit + trade.profit;
   await user.save();
 
