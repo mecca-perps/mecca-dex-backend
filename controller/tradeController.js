@@ -161,8 +161,8 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
       poolProfit = trade.profit * 0.1;
       trade.profit *= 0.9;
     } else {
-      poolProfit = trade.profit * 0.05;
-      trade.profit *= 0.95;
+      poolProfit = trade.profit * 0.01;
+      trade.profit *= 0.99;
     }
   }
   if (trade.type === "short") {
@@ -172,8 +172,8 @@ exports.closeTrade = async (endPrice, tradeId, isExpire) => {
       poolProfit = trade.profit * 0.1;
       trade.profit *= 0.9;
     } else {
-      poolProfit = trade.profit * 0.05;
-      trade.profit *= 0.95;
+      poolProfit = trade.profit * 0.01;
+      trade.profit *= 0.99;
     }
   }
 
